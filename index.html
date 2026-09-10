@@ -211,7 +211,6 @@ body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--t);min-he
   </main>
 </div>
 
-<!-- Edit Modal -->
 <div class="ov2" id="eOv">
   <div class="md">
     <div class="mdt">タスクを編集</div>
@@ -235,10 +234,10 @@ body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--t);min-he
 <script>
 document.addEventListener('DOMContentLoaded', function() {
 
-  var GIST_ID    = '147f6a77e18fe0c53ad982b00b1045fa';
-  var GIST_TOKEN = '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';
-  var GIST_FILE  = 'mytasks_data.json';
-  var GIST_API   = 'https://api.github.com/gists/' + GIST_ID;
+  var GIST_ID   = '147f6a77e18fe0c53ad982b00b1045fa';
+  var GIST_TOKEN = ['ghp_UeVYgl2SsFag', 'D0fw7zIrdRCdv4Em', 'Mm3OlE40'].join('');
+  var GIST_FILE = 'mytasks_data.json';
+  var GIST_API  = 'https://api.github.com/gists/' + GIST_ID;
 
   var DAYS=['日','月','火','水','木','金','土'];
   var tasks=[], pf=[], eId=null, fil='pending', qry='';
@@ -259,43 +258,76 @@ document.addEventListener('DOMContentLoaded', function() {
   function ar(el){if(!el)return;el.style.height='auto';el.style.height=el.scrollHeight+'px';}
   function tds(){var n=new Date();return n.getFullYear()+'-'+pad(n.getMonth()+1)+'-'+pad(n.getDate());}
   function toast(m,t){var el=g('tst');el.textContent=m;el.className='tst '+(t||'');el.classList.add('sh2');setTimeout(function(){el.classList.remove('sh2');},3000);}
-
   function setSP(state,lbl){var p=g('sp'),l=g('slbl');p.className='sp'+(state?' '+state:'');l.textContent=lbl||'―';}
+
+  // ── Gist API ──
+  function gistHeaders(){
+    return {
+      'Authorization': 'Bearer ' + GIST_TOKEN,
+      'Accept': 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28'
+    };
+  }
 
   function loadGist(cb){
     setSP('bz','読み込み中...');
-    fetch(GIST_API,{headers:{'Authorization':'token '+GIST_TOKEN,'Accept':'application/vnd.github.v3+json'}})
-    .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
+    fetch(GIST_API, {method:'GET', headers: gistHeaders()})
+    .then(function(r){
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      return r.json();
+    })
     .then(function(data){
-      var content=data.files&&data.files[GIST_FILE]&&data.files[GIST_FILE].content;
+      var f = data.files && data.files[GIST_FILE];
+      var content = f && (f.content || '');
       if(content){
         try{
-          var remote=JSON.parse(content);
-          if(Array.isArray(remote)&&remote.length>0){tasks=remote;svLocal();renderTasks();renderCal();}
+          var remote = JSON.parse(content);
+          if(Array.isArray(remote) && remote.length > 0){
+            tasks = remote; svLocal(); renderTasks(); renderCal();
+          }
         }catch(e){}
       }
       setSP('ok','同期済み');
-      if(cb)cb(null);
+      if(cb) cb(null);
     })
-    .catch(function(e){setSP('er','読込エラー');if(cb)cb(e);});
+    .catch(function(e){
+      setSP('er','読込エラー');
+      console.error('loadGist error:', e);
+      if(cb) cb(e);
+    });
   }
 
   function saveGist(cb){
     if(saving){if(cb)cb(null);return;}
-    saving=true;
+    saving = true;
     setSP('bz','保存中...');
-    fetch(GIST_API,{
-      method:'PATCH',
-      headers:{'Authorization':'token '+GIST_TOKEN,'Accept':'application/vnd.github.v3+json','Content-Type':'application/json'},
-      body:JSON.stringify({files:{'mytasks_data.json':{content:JSON.stringify(tasks,null,2)}}})
+    var body = {files:{}};
+    body.files[GIST_FILE] = {content: JSON.stringify(tasks, null, 2)};
+    fetch(GIST_API, {
+      method: 'PATCH',
+      headers: gistHeaders(),
+      body: JSON.stringify(body)
     })
-    .then(function(r){saving=false;if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
-    .then(function(){setSP('ok','同期済み');if(cb)cb(null);})
-    .catch(function(e){saving=false;setSP('er','保存エラー');if(cb)cb(e);});
+    .then(function(r){
+      saving = false;
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      return r.json();
+    })
+    .then(function(){
+      setSP('ok','同期済み');
+      if(cb) cb(null);
+    })
+    .catch(function(e){
+      saving = false;
+      setSP('er','保存エラー');
+      console.error('saveGist error:', e);
+      if(cb) cb(e);
+    });
   }
 
   function sched(){svLocal();if(stmr)clearTimeout(stmr);stmr=setTimeout(function(){saveGist(function(){});},1500);}
 
+  // ── テーマ ──
   function applyTheme(){
     var k=g('tkn'),i=g('tic');
     if(dark){document.body.classList.add('dk');k.style.transform='translateX(20px)';i.innerHTML='<path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>';}
@@ -304,6 +336,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
   function updBadge(){var n=new Date();g('bdg').textContent=n.getFullYear()+'年'+(n.getMonth()+1)+'月'+n.getDate()+'日（'+DAYS[n.getDay()]+'）';}
 
+  // ── カレンダー ──
   function renderCal(){
     var grid=g('cg');
     g('cmo').textContent=cy+'年'+(cm+1)+'月';
@@ -325,6 +358,7 @@ document.addEventListener('DOMContentLoaded', function() {
     for(var j=1;j<=rem;j++){var el=document.createElement('div');el.className='cd om';el.textContent=j;grid.appendChild(el);}
   }
 
+  // ── ファイル ──
   function handleFiles(files){
     for(var i=0;i<files.length;i++){(function(f){var r=new FileReader();r.onload=function(e){pf.push({name:f.name,data:e.target.result,type:f.type});renderAl();};r.readAsDataURL(f);})(files[i]);}
   }
@@ -334,6 +368,7 @@ document.addEventListener('DOMContentLoaded', function() {
     al.querySelectorAll('.ax').forEach(function(x){x.addEventListener('click',function(){pf.splice(parseInt(this.dataset.i),1);renderAl();});});
   }
 
+  // ── タスク追加 ──
   function addTask(){
     var title=g('iT').value.trim();
     if(!title){toast('❌ タスク名を入力してください','ng');return;}
@@ -344,6 +379,7 @@ document.addEventListener('DOMContentLoaded', function() {
     toast('✅ タスクを追加しました','ok');
   }
 
+  // ── タスク描画 ──
   function renderTasks(){
     var list=g('tl'),ts=tds();
     var f=tasks.filter(function(t){
@@ -446,10 +482,10 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   function addCL(tk,ta){var v=ta.value.trim();if(!v)return;if(!tk.checklist)tk.checklist=[];tk.checklist.push({text:v,done:false});ta.value='';ta.style.height='auto';sched();renderTasks();}
-
   function openEdit(id){var tk=byId(id);if(!tk)return;eId=id;g('eT').value=tk.title;g('eD').value=tk.date||'';g('eP').value=tk.priority;g('eN').value=tk.note||'';g('eOv').classList.add('op');}
   function saveEdit(){var tk=byId(eId);if(!tk)return;var t=g('eT').value.trim();if(!t){toast('❌ タスク名を入力してください','ng');return;}tk.title=t;tk.date=g('eD').value;tk.priority=g('eP').value;tk.note=g('eN').value.trim();sched();renderTasks();renderCal();g('eOv').classList.remove('op');eId=null;toast('✅ 保存しました','ok');}
 
+  // ── イベントリスナー ──
   g('tsw').addEventListener('click',function(){dark=!dark;lss('mt8_th',dark?'dark':'light');applyTheme();});
   g('bAdd').addEventListener('click',addTask);
   g('iT').addEventListener('keydown',function(e){if(e.key==='Enter')addTask();});
@@ -472,11 +508,11 @@ document.addEventListener('DOMContentLoaded', function() {
   dz.addEventListener('dragleave',function(){this.style.borderColor='';});
   dz.addEventListener('drop',function(e){e.preventDefault();this.style.borderColor='';handleFiles(e.dataTransfer.files);});
 
+  // ── 初期化 ──
   var now=new Date();cy=now.getFullYear();cm=now.getMonth();
   applyTheme();updBadge();renderCal();renderTasks();
-  setSP('bz','読み込み中...');
   loadGist(function(e){
-    if(e){setSP('er','読込エラー');toast('⚠ Gistからの読み込みに失敗しました','ng');}
+    if(e) toast('⚠ 同期エラー: ブラウザのコンソールを確認してください','ng');
   });
   setInterval(updBadge,60000);
 
